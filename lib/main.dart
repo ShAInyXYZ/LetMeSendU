@@ -12,6 +12,7 @@ import 'screens/home_screen.dart';
 import 'screens/quick_send_window.dart';
 import 'services/device_service.dart';
 import 'services/settings_service.dart';
+import 'theme/app_theme.dart';
 
 late SettingsService settingsService;
 late DeviceService deviceService;
@@ -172,21 +173,9 @@ class _LetMeSendUAppState extends State<LetMeSendUApp> with TrayListener, Window
       child: MaterialApp(
         title: 'LetMeSendU',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.deepPurple,
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-        ),
-        darkTheme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.deepPurple,
-            brightness: Brightness.dark,
-          ),
-          useMaterial3: true,
-        ),
-        themeMode: ThemeMode.system,
+        theme: AppTheme.darkTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.dark,
         home: const HomeScreen(),
       ),
     );
@@ -202,21 +191,9 @@ class QuickSendApp extends StatelessWidget {
     return MaterialApp(
       title: 'Quick Send',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.deepPurple,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-      ),
-      themeMode: ThemeMode.system,
+      theme: AppTheme.darkTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.dark,
       home: QuickSendWindow(
         settingsService: settingsService,
         deviceService: deviceService,
