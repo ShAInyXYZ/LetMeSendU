@@ -23,7 +23,10 @@ void main(List<String> args) async {
   // Initialize services
   settingsService = SettingsService();
   await settingsService.init();
-  deviceService = DeviceService();
+
+  // Get saved device name or use default
+  final savedDeviceName = settingsService.getDeviceName();
+  deviceService = DeviceService(customAlias: savedDeviceName);
 
   // Check if launching as quick send window
   final isQuickSendWindow = args.contains('--quick-send');
@@ -168,8 +171,9 @@ class _LetMeSendUAppState extends State<LetMeSendUApp> with TrayListener, Window
 
   @override
   Widget build(BuildContext context) {
+    final savedName = settingsService.getDeviceName();
     return ChangeNotifierProvider(
-      create: (_) => AppProvider(),
+      create: (_) => AppProvider(deviceName: savedName),
       child: MaterialApp(
         title: 'LetMeSendU',
         debugShowCheckedModeBanner: false,

@@ -47,41 +47,55 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
               child: Row(
                 children: [
-                  // Logo/Title
+                  // Logo
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppTheme.primary, AppTheme.accent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.send_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Device name (editable)
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [AppTheme.primary, AppTheme.accent],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
+                    child: Consumer<AppProvider>(
+                      builder: (context, provider, _) {
+                        final currentName = settingsService.getDeviceName() ?? provider.deviceInfo.alias;
+                        return GestureDetector(
+                          onTap: () => _showDeviceNameDialog(),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  currentName,
+                                  style: const TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.5,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                borderRadius: BorderRadius.circular(12),
                               ),
-                              child: const Icon(
-                                Icons.send_rounded,
-                                color: Colors.white,
-                                size: 20,
+                              const SizedBox(width: 8),
+                              const Icon(
+                                Icons.edit_rounded,
+                                size: 16,
+                                color: AppTheme.accent,
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'LetMeSendU',
-                              style: TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        );
+                      },
                     ),
                   ),
                   // Action buttons
@@ -89,6 +103,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context, provider, _) {
                       return Row(
                         children: [
+                          _IconBtn(
+                            icon: Icons.settings_rounded,
+                            onTap: () => _showSettings(context),
+                            tooltip: 'Settings',
+                          ),
+                          const SizedBox(width: 8),
                           _IconBtn(
                             icon: Icons.refresh_rounded,
                             onTap: provider.isRunning ? () => provider.refresh() : null,
@@ -166,12 +186,31 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                               const SizedBox(height: 2),
+                              if (provider.wifiName != null && provider.isRunning)
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.wifi_rounded,
+                                      size: 12,
+                                      color: AppTheme.accent,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      provider.wifiName!,
+                                      style: const TextStyle(
+                                        color: AppTheme.accent,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               Text(
                                 provider.statusMessage ??
                                     (provider.isRunning
                                         ? '${provider.localIp}:53317'
                                         : 'Tap play to start'),
-                                style: TextStyle(
+                                style: const TextStyle(
                                   color: AppTheme.textMuted,
                                   fontSize: 12,
                                 ),
@@ -548,6 +587,173 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _showDeviceNameDialog() {
+    final controller = TextEditingController(
+      text: settingsService.getDeviceName() ?? '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surfaceDark,
+        title: const Text(
+          'Device Name',
+          style: TextStyle(color: AppTheme.textPrimary),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Set a name for this device so it\'s easier to identify on other devices.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(color: AppTheme.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'e.g., My Desktop, Work PC',
+                hintStyle: const TextStyle(color: AppTheme.textMuted),
+                filled: true,
+                fillColor: AppTheme.backgroundDark,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppTheme.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppTheme.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppTheme.primary),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final name = controller.text.trim();
+              if (name.isNotEmpty) {
+                await settingsService.setDeviceName(name);
+                // Update name in AppProvider (which updates DeviceService and re-announces)
+                if (mounted) {
+                  this.context.read<AppProvider>().updateDeviceName(name);
+                }
+              }
+              Navigator.pop(context);
+              setState(() {});
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+            ),
+            child: const Text('Save', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSettings(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.border,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Settings',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.badge_rounded, color: AppTheme.textSecondary),
+              title: const Text('Device Name', style: TextStyle(color: AppTheme.textPrimary)),
+              subtitle: Text(
+                settingsService.getDeviceName() ?? this.context.read<AppProvider>().deviceInfo.alias,
+                style: const TextStyle(color: AppTheme.textMuted),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _showDeviceNameDialog();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.info_outline_rounded, color: AppTheme.textSecondary),
+              title: const Text('About', style: TextStyle(color: AppTheme.textPrimary)),
+              subtitle: const Text('LetMeSendU v1.0.0', style: TextStyle(color: AppTheme.textMuted)),
+              onTap: () {
+                Navigator.pop(context);
+                _showAboutDialog();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAboutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surfaceDark,
+        title: const Text('LetMeSendU', style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Version 1.0.0',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'A LocalSend-compatible file sharing app for Linux Desktop.',
+              style: TextStyle(color: AppTheme.textPrimary),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Author: ShAInyXYZ',
+              style: TextStyle(color: AppTheme.textMuted),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
     );
   }
 }

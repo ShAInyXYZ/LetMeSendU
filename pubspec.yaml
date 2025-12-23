@@ -71,6 +71,15 @@ dependencies:
   # Shared preferences for linked device
   shared_preferences: ^2.2.2
 
+  # Open files with default app
+  open_file: ^3.3.2
+
+  # Runtime permissions
+  permission_handler: ^11.3.1
+
+  # Network info (WiFi SSID)
+  network_info_plus: ^6.1.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

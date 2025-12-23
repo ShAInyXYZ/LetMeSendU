@@ -6,11 +6,21 @@ class SettingsService {
   static const String _linkedDeviceIpKey = 'linked_device_ip';
   static const String _linkedDevicePortKey = 'linked_device_port';
   static const String _linkedDeviceProtocolKey = 'linked_device_protocol';
+  static const String _deviceNameKey = 'device_name';
 
   late SharedPreferences _prefs;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
+  }
+
+  // Device name/alias settings
+  String? getDeviceName() {
+    return _prefs.getString(_deviceNameKey);
+  }
+
+  Future<void> setDeviceName(String name) async {
+    await _prefs.setString(_deviceNameKey, name);
   }
 
   Future<void> setLinkedDevice({

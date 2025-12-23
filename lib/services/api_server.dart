@@ -15,6 +15,9 @@ import '../models/transfer_session.dart';
 import 'device_service.dart';
 import 'discovery_service.dart';
 
+// Android external storage path
+const String _androidDownloadsPath = '/storage/emulated/0/Download/LetMeSendU';
+
 class ApiServer {
   static const int port = 53317;
 
@@ -38,9 +41,16 @@ class ApiServer {
     await stop();
 
     // Set up download directory
-    final appDir = await getApplicationDocumentsDirectory();
-    _downloadPath = p.join(appDir.path, 'LetMeSendU', 'Downloads');
+    // On Android, use the public Downloads folder for easy access
+    // On other platforms, use app documents directory
+    if (Platform.isAndroid) {
+      _downloadPath = _androidDownloadsPath;
+    } else {
+      final appDir = await getApplicationDocumentsDirectory();
+      _downloadPath = p.join(appDir.path, 'LetMeSendU', 'Downloads');
+    }
     await Directory(_downloadPath!).create(recursive: true);
+    print('[API] Download path: $_downloadPath');
 
     final router = Router();
 
@@ -214,9 +224,11 @@ class ApiServer {
         fileName: fileInfo.fileName,
         totalBytes: fileInfo.size,
         status: TransferStatus.inProgress,
+        filePath: filePath,
       );
 
       session.status = TransferStatus.inProgress;
+      _transferProgressController.add(progress);
 
       await for (final chunk in request.read()) {
         sink.add(chunk);
@@ -229,7 +241,7 @@ class ApiServer {
       progress.status = TransferStatus.completed;
       _transferProgressController.add(progress);
 
-      print('[API] Received file: ${fileInfo.fileName} (${fileInfo.size} bytes)');
+      print('[API] Received file: ${fileInfo.fileName} (${fileInfo.size} bytes) saved to $filePath');
 
       return Response.ok('');
     } catch (e) {

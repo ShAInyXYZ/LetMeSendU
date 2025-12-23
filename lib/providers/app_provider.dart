@@ -21,7 +21,12 @@ class AppProvider extends ChangeNotifier {
   String? _localIp;
   String? get localIp => _localIp;
 
+  String? _wifiName;
+  String? get wifiName => _wifiName;
+
   DeviceInfo get deviceInfo => _deviceService.deviceInfo;
+  DeviceService get deviceService => _deviceService;
+  DiscoveryService get discoveryService => _discoveryService;
 
   bool _isRunning = false;
   bool get isRunning => _isRunning;
@@ -35,16 +40,30 @@ class AppProvider extends ChangeNotifier {
   FileTransferProgress? _receiveProgress;
   FileTransferProgress? get receiveProgress => _receiveProgress;
 
+  final List<ReceivedFile> _receivedFiles = [];
+  List<ReceivedFile> get receivedFiles => _receivedFiles;
+
+  // Separate list for notification overlay (can be dismissed)
+  final List<ReceivedFile> _recentNotifications = [];
+  List<ReceivedFile> get recentNotifications => _recentNotifications;
+
   String? _statusMessage;
   String? get statusMessage => _statusMessage;
 
-  AppProvider() {
-    _deviceService = DeviceService();
+  AppProvider({String? deviceName}) {
+    _deviceService = DeviceService(customAlias: deviceName);
     _discoveryService = DiscoveryService(_deviceService);
     _apiServer = ApiServer(_deviceService, _discoveryService);
     _fileSender = FileSender(_deviceService);
 
     _setupListeners();
+  }
+
+  void updateDeviceName(String name) {
+    _deviceService.setAlias(name);
+    // Re-announce with the new name
+    _discoveryService.announce();
+    notifyListeners();
   }
 
   void _setupListeners() {
@@ -61,8 +80,22 @@ class AppProvider extends ChangeNotifier {
 
     _apiServer.transferProgress.listen((progress) {
       _receiveProgress = progress;
-      if (progress.status == TransferStatus.completed) {
+      if (progress.status == TransferStatus.completed && progress.filePath != null) {
         _statusMessage = 'Received: ${progress.fileName}';
+        final receivedFile = ReceivedFile(
+          fileName: progress.fileName,
+          filePath: progress.filePath!,
+          size: progress.totalBytes,
+          receivedAt: DateTime.now(),
+        );
+        // Add to permanent received files list (for gallery)
+        _receivedFiles.insert(0, receivedFile);
+        // Add to notifications list (can be dismissed)
+        _recentNotifications.insert(0, receivedFile);
+        // Keep notifications limited to 5
+        if (_recentNotifications.length > 5) {
+          _recentNotifications.removeLast();
+        }
       }
       notifyListeners();
     });
@@ -79,6 +112,7 @@ class AppProvider extends ChangeNotifier {
 
     try {
       _localIp = await _deviceService.getLocalIpAddress();
+      _wifiName = await _deviceService.getWifiName();
       await _apiServer.start();
       await _discoveryService.start();
       _isRunning = true;
@@ -111,6 +145,16 @@ class AppProvider extends ChangeNotifier {
     _sendProgress = null;
     _receiveProgress = null;
     _pendingTransfer = null;
+    notifyListeners();
+  }
+
+  void dismissNotification(ReceivedFile file) {
+    _recentNotifications.remove(file);
+    notifyListeners();
+  }
+
+  void clearNotifications() {
+    _recentNotifications.clear();
     notifyListeners();
   }
 

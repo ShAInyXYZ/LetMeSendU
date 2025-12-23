@@ -8,11 +8,13 @@ import 'device_service.dart';
 class DiscoveryService {
   static const String multicastAddress = '224.0.0.167';
   static const int port = 53317;
+  static const Duration _announceInterval = Duration(seconds: 5);
 
   RawDatagramSocket? _socket;
   final DeviceService _deviceService;
   final Map<String, DeviceInfo> _discoveredDevices = {};
   final _devicesController = StreamController<List<DeviceInfo>>.broadcast();
+  Timer? _announceTimer;
 
   Stream<List<DeviceInfo>> get devicesStream => _devicesController.stream;
   List<DeviceInfo> get devices => _discoveredDevices.values.toList();
@@ -39,6 +41,9 @@ class DiscoveryService {
       // Send initial announcement
       await announce();
 
+      // Start periodic announcements to stay discoverable
+      _startPeriodicAnnounce();
+
       print('[Discovery] Started listening on port $port');
     } catch (e) {
       print('[Discovery] Failed to start: $e');
@@ -46,7 +51,16 @@ class DiscoveryService {
     }
   }
 
+  void _startPeriodicAnnounce() {
+    _announceTimer?.cancel();
+    _announceTimer = Timer.periodic(_announceInterval, (_) {
+      announce();
+    });
+  }
+
   Future<void> stop() async {
+    _announceTimer?.cancel();
+    _announceTimer = null;
     _socket?.close();
     _socket = null;
     _discoveredDevices.clear();
@@ -94,6 +108,18 @@ class DiscoveryService {
   }
 
   void addDevice(DeviceInfo device) {
+    // Check for duplicate by IP and alias (same device, possibly new fingerprint)
+    final duplicateKey = _discoveredDevices.entries
+        .where((e) =>
+            e.value.ip == device.ip && e.value.alias == device.alias && e.key != device.fingerprint)
+        .map((e) => e.key)
+        .firstOrNull;
+
+    // Remove old entry if same device with different fingerprint
+    if (duplicateKey != null) {
+      _discoveredDevices.remove(duplicateKey);
+    }
+
     final existing = _discoveredDevices[device.fingerprint];
     if (existing == null || existing.ip != device.ip) {
       _discoveredDevices[device.fingerprint] = device;
