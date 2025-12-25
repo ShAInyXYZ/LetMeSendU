@@ -11,13 +11,15 @@ import 'package:window_manager/window_manager.dart';
 import 'providers/app_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/android/android_home_screen.dart';
-import 'screens/quick_send_window.dart';
 import 'services/device_service.dart';
 import 'services/settings_service.dart';
 import 'theme/app_theme.dart';
 
 late SettingsService settingsService;
 late DeviceService deviceService;
+
+// Global key for accessing HomeScreen state
+final GlobalKey<HomeScreenState> homeScreenKey = GlobalKey<HomeScreenState>();
 
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,14 +37,8 @@ void main(List<String> args) async {
     await _launchMobileApp();
   } else {
     // Desktop platforms (Linux, Windows, macOS)
-    final isQuickSendWindow = args.contains('--quick-send');
     await windowManager.ensureInitialized();
-
-    if (isQuickSendWindow) {
-      await _launchQuickSendWindow();
-    } else {
-      await _launchMainWindow();
-    }
+    await _launchMainWindow();
   }
 }
 
@@ -84,12 +80,13 @@ class LetMeSendUMobileApp extends StatelessWidget {
 
 Future<void> _launchMainWindow() async {
   const windowOptions = WindowOptions(
-    size: Size(450, 600),
-    minimumSize: Size(400, 500),
+    size: Size(450, 800),
+    minimumSize: Size(400, 600),
     center: true,
     title: 'LetMeSendU',
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
+    titleBarStyle: TitleBarStyle.hidden,
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
@@ -101,36 +98,6 @@ Future<void> _launchMainWindow() async {
   runApp(const LetMeSendUApp());
 }
 
-Future<void> _launchQuickSendWindow() async {
-  // Get screen size to position in bottom-right
-  final screenSize = await windowManager.getSize();
-
-  const windowWidth = 300.0;
-  const windowHeight = 220.0;
-
-  const windowOptions = WindowOptions(
-    size: Size(windowWidth, windowHeight),
-    minimumSize: Size(windowWidth, windowHeight),
-    maximumSize: Size(windowWidth, windowHeight),
-    center: false,
-    title: 'Quick Send',
-    backgroundColor: Colors.transparent,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    titleBarStyle: TitleBarStyle.hidden,
-  );
-
-  await windowManager.waitUntilReadyToShow(windowOptions, () async {
-    // Position in bottom-right corner
-    // We need to get the screen bounds
-    await windowManager.setPosition(const Offset(1600, 800)); // Will be adjusted
-    await windowManager.show();
-    await windowManager.focus();
-  });
-
-  runApp(const QuickSendApp());
-}
-
 // Main application with full UI
 class LetMeSendUApp extends StatefulWidget {
   const LetMeSendUApp({super.key});
@@ -140,8 +107,6 @@ class LetMeSendUApp extends StatefulWidget {
 }
 
 class _LetMeSendUAppState extends State<LetMeSendUApp> with TrayListener, WindowListener {
-  int? _quickSendPid;
-  bool _quickSendOpen = false;
   final _hotkey = HotKey(
     key: PhysicalKeyboardKey.f11,
     modifiers: [],
@@ -166,34 +131,9 @@ class _LetMeSendUAppState extends State<LetMeSendUApp> with TrayListener, Window
     trayManager.addListener(this);
   }
 
-  Future<void> _toggleQuickSend() async {
-    if (_quickSendOpen && _quickSendPid != null) {
-      // Kill existing quick send window
-      try {
-        Process.killPid(_quickSendPid!, ProcessSignal.sigterm);
-      } catch (e) {
-        // Process might already be dead
-      }
-      _quickSendPid = null;
-      _quickSendOpen = false;
-    } else {
-      // Launch quick send window as separate process
-      final executable = Platform.resolvedExecutable;
-      final process = await Process.start(
-        executable,
-        ['--quick-send'],
-        mode: ProcessStartMode.inheritStdio,
-      );
-
-      _quickSendPid = process.pid;
-      _quickSendOpen = true;
-
-      // Monitor when the process exits (user closes window via X)
-      process.exitCode.then((_) {
-        _quickSendPid = null;
-        _quickSendOpen = false;
-      });
-    }
+  void _toggleQuickSend() {
+    // Toggle QuickSend overlay in HomeScreen
+    homeScreenKey.currentState?.toggleQuickSendOverlay();
   }
 
   @override
@@ -201,9 +141,6 @@ class _LetMeSendUAppState extends State<LetMeSendUApp> with TrayListener, Window
     hotKeyManager.unregister(_hotkey);
     trayManager.removeListener(this);
     windowManager.removeListener(this);
-    if (_quickSendPid != null) {
-      Process.killPid(_quickSendPid!);
-    }
     super.dispose();
   }
 
@@ -223,27 +160,7 @@ class _LetMeSendUAppState extends State<LetMeSendUApp> with TrayListener, Window
         theme: AppTheme.darkTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: ThemeMode.dark,
-        home: const HomeScreen(),
-      ),
-    );
-  }
-}
-
-// Standalone Quick Send window app
-class QuickSendApp extends StatelessWidget {
-  const QuickSendApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Quick Send',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark,
-      home: QuickSendWindow(
-        settingsService: settingsService,
-        deviceService: deviceService,
+        home: HomeScreen(key: homeScreenKey),
       ),
     );
   }

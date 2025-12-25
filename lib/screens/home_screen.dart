@@ -2,23 +2,29 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../main.dart' show settingsService;
 import '../models/device_info.dart';
 import '../providers/app_provider.dart';
 import '../services/settings_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/animated_background.dart';
+import '../widgets/quick_send_overlay.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   LinkedDevice? _linkedDevice;
+  bool _showQuickSendOverlay = false;
+  final FocusNode _focusNode = FocusNode();
 
   @override
   void initState() {
@@ -29,411 +35,487 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
   void _refreshLinkedDevice() {
     setState(() {
       _linkedDevice = settingsService.getLinkedDevice();
     });
   }
 
+  // Public method to toggle QuickSend overlay (called from main.dart)
+  void toggleQuickSendOverlay() {
+    setState(() {
+      _showQuickSendOverlay = !_showQuickSendOverlay;
+    });
+  }
+
+  void _closeQuickSendOverlay() {
+    setState(() {
+      _showQuickSendOverlay = false;
+    });
+  }
+
+  Future<void> _sendFilesToLinkedDevice(List<File> files) async {
+    final provider = context.read<AppProvider>();
+    final linked = _linkedDevice;
+
+    if (linked == null || files.isEmpty) return;
+
+    // Find the linked device in the current device list
+    final targetDevice = provider.devices.firstWhere(
+      (d) => d.fingerprint == linked.fingerprint,
+      orElse: () => DeviceInfo(
+        alias: linked.alias,
+        version: '2.1',
+        deviceModel: null,
+        deviceType: DeviceType.desktop,
+        fingerprint: linked.fingerprint,
+        port: linked.port,
+        protocol: linked.protocol,
+        download: false,
+        ip: linked.ip,
+      ),
+    );
+
+    final result = await provider.sendFiles(targetDevice, files);
+
+    if (mounted) {
+      _closeQuickSendOverlay();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                result.success ? Icons.check_circle : Icons.error_outline,
+                color: result.success ? AppTheme.success : AppTheme.error,
+                size: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  result.success
+                      ? '${files.length} file(s) sent to ${linked.alias}'
+                      : 'Failed: ${result.error}',
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.surfaceLight,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return KeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: (event) {
+        if (event is KeyDownEvent &&
+            event.logicalKey == LogicalKeyboardKey.escape &&
+            _showQuickSendOverlay) {
+          _closeQuickSendOverlay();
+        }
+      },
+      child: Scaffold(
+        body: Stack(
           children: [
-            // Custom header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: Row(
-                children: [
-                  // Logo
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.asset(
-                      'assets/logo.png',
-                      width: 40,
-                      height: 40,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Device name (editable)
-                  Expanded(
-                    child: Consumer<AppProvider>(
-                      builder: (context, provider, _) {
-                        final currentName = settingsService.getDeviceName() ?? provider.deviceInfo.alias;
-                        return GestureDetector(
-                          onTap: () => _showDeviceNameDialog(),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  currentName,
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: -0.5,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(
-                                Icons.edit_rounded,
-                                size: 16,
-                                color: AppTheme.accent,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  // Action buttons
-                  Consumer<AppProvider>(
-                    builder: (context, provider, _) {
-                      return Row(
-                        children: [
-                          _IconBtn(
-                            icon: Icons.settings_rounded,
-                            onTap: () => _showSettings(context),
-                            tooltip: 'Settings',
-                          ),
-                          const SizedBox(width: 8),
-                          _IconBtn(
-                            icon: Icons.refresh_rounded,
-                            onTap: provider.isRunning ? () => provider.refresh() : null,
-                            tooltip: 'Refresh',
-                          ),
-                          const SizedBox(width: 8),
-                          _IconBtn(
-                            icon: provider.isRunning
-                                ? Icons.stop_rounded
-                                : Icons.play_arrow_rounded,
-                            onTap: () {
-                              if (provider.isRunning) {
-                                provider.stop();
-                              } else {
-                                provider.start();
-                              }
-                            },
-                            isActive: provider.isRunning,
-                            tooltip: provider.isRunning ? 'Stop' : 'Start',
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Status card
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Consumer<AppProvider>(
-                builder: (context, provider, _) {
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceDark,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: Row(
-                      children: [
-                        // Status indicator
-                        Container(
-                          width: 10,
-                          height: 10,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: provider.isRunning
-                                ? AppTheme.success
-                                : AppTheme.textMuted,
-                            boxShadow: provider.isRunning
-                                ? [
-                                    BoxShadow(
-                                      color: AppTheme.success.withOpacity(0.5),
-                                      blurRadius: 8,
-                                      spreadRadius: 2,
-                                    ),
-                                  ]
-                                : null,
-                          ),
+            AnimatedBackground(
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+              // Window controls and draggable header (desktop only)
+              if (Platform.isLinux || Platform.isWindows || Platform.isMacOS)
+                SizedBox(
+                  height: 40,
+                  child: Stack(
+                    children: [
+                      // Draggable area covering the whole header
+                      DragToMoveArea(
+                        child: Container(
+                          color: Colors.transparent,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                provider.isRunning ? 'Online' : 'Offline',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              if (provider.wifiName != null && provider.isRunning)
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.wifi_rounded,
-                                      size: 12,
-                                      color: AppTheme.accent,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      provider.wifiName!,
-                                      style: const TextStyle(
-                                        color: AppTheme.accent,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              Text(
-                                provider.statusMessage ??
-                                    (provider.isRunning
-                                        ? '${provider.localIp}:53317'
-                                        : 'Tap play to start'),
-                                style: const TextStyle(
-                                  color: AppTheme.textMuted,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (provider.sendProgress != null)
-                          _buildProgressIndicator(provider),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            // Quick Send bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: _linkedDevice != null
-                      ? LinearGradient(
-                          colors: [
-                            AppTheme.primary.withOpacity(0.15),
-                            AppTheme.accent.withOpacity(0.1),
+                      ),
+                      // Window buttons on top
+                      Positioned(
+                        top: 4,
+                        right: 12,
+                        child: Row(
+                          children: [
+                            _WindowButton(
+                              icon: Icons.remove_rounded,
+                              onTap: () => windowManager.minimize(),
+                              tooltip: 'Minimize',
+                            ),
+                            const SizedBox(width: 8),
+                            _WindowButton(
+                              icon: Icons.close_rounded,
+                              onTap: () => windowManager.close(),
+                              isClose: true,
+                              tooltip: 'Close',
+                            ),
                           ],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        )
-                      : null,
-                  color: _linkedDevice == null ? AppTheme.surfaceDark : null,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: _linkedDevice != null
-                        ? AppTheme.primary.withOpacity(0.3)
-                        : AppTheme.border,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
+              // Centered Logo + Title
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Column(
                   children: [
-                    Icon(
-                      _linkedDevice != null ? Icons.link_rounded : Icons.link_off_rounded,
-                      size: 18,
-                      color: _linkedDevice != null
-                          ? AppTheme.accent
-                          : AppTheme.textMuted,
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _linkedDevice != null
-                            ? _linkedDevice!.alias
-                            : 'No device linked',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: _linkedDevice != null
-                              ? AppTheme.textPrimary
-                              : AppTheme.textMuted,
-                        ),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Image.asset(
+                        'assets/logo.png',
+                        width: 64,
+                        height: 64,
                       ),
                     ),
-                    if (_linkedDevice != null)
-                      GestureDetector(
-                        onTap: () async {
-                          await settingsService.clearLinkedDevice();
-                          _refreshLinkedDevice();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: AppTheme.error.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'Unlink',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppTheme.error,
-                              fontWeight: FontWeight.w600,
+                    const SizedBox(height: 8),
+                    const Text(
+                      'SendU',
+                      style: TextStyle(
+                        fontFamily: 'Borel',
+                        fontSize: 32,
+                        fontWeight: FontWeight.w400,
+                        color: AppTheme.textPrimary,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Action buttons
+                    Consumer<AppProvider>(
+                      builder: (context, provider, _) {
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _IconBtn(
+                              icon: Icons.refresh_rounded,
+                              onTap: provider.isRunning ? () => provider.refresh() : null,
+                              tooltip: 'Refresh',
                             ),
-                          ),
-                        ),
-                      ),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'F11',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.textMuted,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
+                            const SizedBox(width: 8),
+                            _IconBtn(
+                              icon: provider.isRunning
+                                  ? Icons.stop_rounded
+                                  : Icons.play_arrow_rounded,
+                              onTap: () {
+                                if (provider.isRunning) {
+                                  provider.stop();
+                                } else {
+                                  provider.start();
+                                }
+                              },
+                              isActive: provider.isRunning,
+                              tooltip: provider.isRunning ? 'Stop' : 'Start',
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ],
                 ),
               ),
-            ),
 
-            const SizedBox(height: 24),
-
-            // Section title
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Row(
-                children: [
-                  const Text(
-                    'Nearby Devices',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Consumer<AppProvider>(
-                    builder: (context, provider, _) {
-                      if (provider.devices.isEmpty) return const SizedBox.shrink();
-                      return Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
+              // Device info section (name, IP, fingerprint)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                child: Consumer<AppProvider>(
+                  builder: (context, provider, _) {
+                    final currentName = settingsService.getDeviceName() ?? provider.deviceInfo.alias;
+                    return GestureDetector(
+                      onTap: () => _showDeviceNameDialog(),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: AppTheme.primary.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(10),
+                          color: AppTheme.surfaceDark.withOpacity(0.8),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppTheme.border),
                         ),
-                        child: Text(
-                          '${provider.devices.length}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.primary,
-                            fontWeight: FontWeight.w600,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          currentName,
+                                          style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppTheme.textPrimary,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Icon(
+                                        Icons.edit_rounded,
+                                        size: 14,
+                                        color: AppTheme.accent,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  if (provider.isRunning && provider.localIp != null)
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.lan_rounded,
+                                          size: 12,
+                                          color: AppTheme.textMuted,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          '${provider.localIp}:53317',
+                                          style: const TextStyle(
+                                            color: AppTheme.textMuted,
+                                            fontSize: 12,
+                                            fontFamily: 'monospace',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.fingerprint_rounded,
+                                        size: 12,
+                                        color: AppTheme.textMuted,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        provider.deviceInfo.fingerprint.substring(0, 8),
+                                        style: const TextStyle(
+                                          color: AppTheme.textMuted,
+                                          fontSize: 11,
+                                          fontFamily: 'monospace',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Status indicator
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: provider.isRunning
+                                    ? AppTheme.success
+                                    : AppTheme.textMuted,
+                                boxShadow: provider.isRunning
+                                    ? [
+                                        BoxShadow(
+                                          color: AppTheme.success.withOpacity(0.5),
+                                          blurRadius: 8,
+                                          spreadRadius: 2,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // WiFi & Progress bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Consumer<AppProvider>(
+                  builder: (context, provider, _) {
+                    if (!provider.isRunning && provider.sendProgress == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceDark.withOpacity(0.6),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.border.withOpacity(0.5)),
+                      ),
+                      child: Row(
+                        children: [
+                          if (provider.wifiName != null && provider.isRunning) ...[
+                            const Icon(
+                              Icons.wifi_rounded,
+                              size: 14,
+                              color: AppTheme.accent,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              provider.wifiName!,
+                              style: const TextStyle(
+                                color: AppTheme.accent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                          const Spacer(),
+                          if (provider.sendProgress != null)
+                            _buildProgressIndicator(provider),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Section title
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Nearby Devices',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Consumer<AppProvider>(
+                      builder: (context, provider, _) {
+                        if (provider.devices.isEmpty) return const SizedBox.shrink();
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
                           ),
-                        ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '${provider.devices.length}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppTheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Device list
+              Expanded(
+                child: Consumer<AppProvider>(
+                  builder: (context, provider, _) {
+                    if (!provider.isRunning) {
+                      return _EmptyState(
+                        icon: Icons.wifi_off_rounded,
+                        title: 'Service Offline',
+                        subtitle: 'Tap the play button to start discovering devices',
                       );
-                    },
-                  ),
-                ],
+                    }
+
+                    if (provider.devices.isEmpty) {
+                      return _EmptyState(
+                        icon: Icons.devices_rounded,
+                        title: 'No Devices Found',
+                        subtitle: 'Make sure other devices are running\nLocalSend on the same network',
+                      );
+                    }
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      itemCount: provider.devices.length,
+                      itemBuilder: (context, index) {
+                        final device = provider.devices[index];
+                        final isLinked = _linkedDevice?.fingerprint == device.fingerprint;
+                        return _DeviceCard(
+                          device: device,
+                          isLinked: isLinked,
+                          onSend: () => _pickAndSendFiles(device),
+                          onLink: () => _linkDevice(device),
+                          onLongPress: isLinked ? () => _showDeviceOptionsDialog(device) : null,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+                  ],
+                ),
               ),
             ),
-
-            const SizedBox(height: 12),
-
-            // Device list
-            Expanded(
-              child: Consumer<AppProvider>(
-                builder: (context, provider, _) {
-                  if (!provider.isRunning) {
-                    return _EmptyState(
-                      icon: Icons.wifi_off_rounded,
-                      title: 'Service Offline',
-                      subtitle: 'Tap the play button to start discovering devices',
-                    );
-                  }
-
-                  if (provider.devices.isEmpty) {
-                    return _EmptyState(
-                      icon: Icons.devices_rounded,
-                      title: 'No Devices Found',
-                      subtitle: 'Make sure other devices are running\nLocalSend on the same network',
-                    );
-                  }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: provider.devices.length,
-                    itemBuilder: (context, index) {
-                      final device = provider.devices[index];
-                      final isLinked = _linkedDevice?.fingerprint == device.fingerprint;
-                      return _DeviceCard(
-                        device: device,
-                        isLinked: isLinked,
-                        onSend: () => _pickAndSendFiles(device),
-                        onLink: () => _linkDevice(device),
-                      );
-                    },
-                  );
-                },
-              ),
+            // QuickSend Overlay
+            QuickSendOverlay(
+              isVisible: _showQuickSendOverlay,
+              onClose: _closeQuickSendOverlay,
+              onFilesDropped: _sendFilesToLinkedDevice,
+              hasLinkedDevice: _linkedDevice != null,
+              onLinkDeviceRequest: () {
+                // Focus goes back to main screen - no action needed
+              },
             ),
           ],
         ),
-      ),
-      floatingActionButton: Consumer<AppProvider>(
-        builder: (context, provider, _) {
-          if (!provider.isRunning || provider.devices.isEmpty) {
-            return const SizedBox.shrink();
-          }
-          return Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppTheme.primary, AppTheme.primaryDark],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+        floatingActionButton: _showQuickSendOverlay
+            ? null
+            : Consumer<AppProvider>(
+                builder: (context, provider, _) {
+                  if (!provider.isRunning || provider.devices.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppTheme.primary, AppTheme.primaryDark],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primary.withOpacity(0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: FloatingActionButton.extended(
+                      onPressed: () => _pickAndSendFiles(null),
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      icon: const Icon(Icons.send_rounded),
+                      label: const Text('Send Files'),
+                    ),
+                  );
+                },
               ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primary.withOpacity(0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: FloatingActionButton.extended(
-              onPressed: () => _pickAndSendFiles(null),
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              icon: const Icon(Icons.send_rounded),
-              label: const Text('Send Files'),
-            ),
-          );
-        },
       ),
     );
   }
@@ -582,6 +664,202 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _showDeviceOptionsDialog(DeviceInfo device) {
+    final linkedDevice = settingsService.getLinkedDevice();
+    if (linkedDevice == null) return;
+
+    final subfolderController = TextEditingController(text: linkedDevice.subfolder);
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: 340,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceDark,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  _DeviceAvatar(deviceType: device.deviceType),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          device.alias,
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${device.ip}:${device.port}',
+                          style: const TextStyle(
+                            color: AppTheme.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: AppTheme.textMuted,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Subfolder path
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.folder_rounded,
+                        size: 16,
+                        color: AppTheme.accent,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Save/Receive Folder',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: subfolderController,
+                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'e.g., Phone, Work Phone',
+                      hintStyle: const TextStyle(color: AppTheme.textMuted),
+                      filled: true,
+                      fillColor: AppTheme.backgroundDark,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Files will be saved to and sent from this subfolder',
+                    style: TextStyle(
+                      color: AppTheme.textMuted.withOpacity(0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Save button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final subfolder = subfolderController.text.trim();
+                    if (subfolder.isNotEmpty) {
+                      await settingsService.setLinkedDeviceSubfolder(subfolder);
+                    }
+                    Navigator.pop(context);
+                    _refreshLinkedDevice();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Unlink button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await settingsService.clearLinkedDevice();
+                    _refreshLinkedDevice();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.error,
+                    side: BorderSide(color: AppTheme.error.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.link_off_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Unlink Device',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showDeviceNameDialog() {
     final controller = TextEditingController(
       text: settingsService.getDeviceName() ?? '',
@@ -656,98 +934,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showSettings(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.surfaceDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Settings',
-              style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.badge_rounded, color: AppTheme.textSecondary),
-              title: const Text('Device Name', style: TextStyle(color: AppTheme.textPrimary)),
-              subtitle: Text(
-                settingsService.getDeviceName() ?? this.context.read<AppProvider>().deviceInfo.alias,
-                style: const TextStyle(color: AppTheme.textMuted),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeviceNameDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline_rounded, color: AppTheme.textSecondary),
-              title: const Text('About', style: TextStyle(color: AppTheme.textPrimary)),
-              subtitle: const Text('LetMeSendU v1.0.0', style: TextStyle(color: AppTheme.textMuted)),
-              onTap: () {
-                Navigator.pop(context);
-                _showAboutDialog();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAboutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        title: const Text('LetMeSendU', style: TextStyle(color: AppTheme.textPrimary)),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Version 1.0.0',
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
-            SizedBox(height: 12),
-            Text(
-              'A LocalSend-compatible file sharing app for Linux Desktop.',
-              style: TextStyle(color: AppTheme.textPrimary),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Author: ShAInyXYZ',
-              style: TextStyle(color: AppTheme.textMuted),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _IconBtn extends StatelessWidget {
@@ -809,40 +995,47 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceDark,
-              shape: BoxShape.circle,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceDark,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon,
+                size: 40,
+                color: AppTheme.textMuted,
+              ),
             ),
-            child: Icon(
-              icon,
-              size: 48,
-              color: AppTheme.textMuted,
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSecondary,
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary,
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            subtitle,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: AppTheme.textMuted,
-              height: 1.5,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -893,131 +1086,147 @@ class _DeviceCard extends StatelessWidget {
   final bool isLinked;
   final VoidCallback onSend;
   final VoidCallback onLink;
+  final VoidCallback? onLongPress;
 
   const _DeviceCard({
     required this.device,
     required this.isLinked,
     required this.onSend,
     required this.onLink,
+    this.onLongPress,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.cardDark,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isLinked
-              ? AppTheme.accent.withOpacity(0.5)
-              : AppTheme.border,
-          width: isLinked ? 1.5 : 1,
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.cardDark,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isLinked
+                ? AppTheme.accent.withOpacity(0.5)
+                : AppTheme.border,
+            width: isLinked ? 1.5 : 1,
+          ),
         ),
-      ),
-      child: Row(
-        children: [
-          // Device icon
-          Stack(
-            children: [
-              _DeviceAvatar(deviceType: device.deviceType),
-              if (isLinked)
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: AppTheme.cardDark,
-                        width: 2,
+        child: Row(
+          children: [
+            // Device icon
+            Stack(
+              children: [
+                _DeviceAvatar(deviceType: device.deviceType),
+                if (isLinked)
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppTheme.cardDark,
+                          width: 2,
+                        ),
                       ),
-                    ),
-                    child: const Icon(
-                      Icons.link_rounded,
-                      size: 10,
-                      color: AppTheme.backgroundDark,
+                      child: const Icon(
+                        Icons.link_rounded,
+                        size: 10,
+                        color: AppTheme.backgroundDark,
+                      ),
                     ),
                   ),
-                ),
-            ],
-          ),
-          const SizedBox(width: 14),
-          // Device info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        device.alias,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
+              ],
+            ),
+            const SizedBox(width: 14),
+            // Device info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          device.alias,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                    if (isLinked) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          'LINKED',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: AppTheme.accent,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
+                      if (isLinked) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'LINKED',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: AppTheme.accent,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${device.deviceModel ?? device.deviceType.name} • ${device.ip}',
-                  style: const TextStyle(
-                    color: AppTheme.textMuted,
-                    fontSize: 12,
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${device.deviceModel ?? device.deviceType.name} • ${device.ip}',
+                    style: const TextStyle(
+                      color: AppTheme.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (isLinked) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Hold for options',
+                      style: TextStyle(
+                        color: AppTheme.textMuted.withOpacity(0.6),
+                        fontSize: 10,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Actions
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!isLinked)
+                  _ActionButton(
+                    icon: Icons.link_rounded,
+                    onTap: onLink,
+                    tooltip: 'Link device',
+                  ),
+                const SizedBox(width: 8),
+                _ActionButton(
+                  icon: Icons.send_rounded,
+                  onTap: onSend,
+                  isPrimary: true,
+                  tooltip: 'Send files',
                 ),
               ],
             ),
-          ),
-          // Actions
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!isLinked)
-                _ActionButton(
-                  icon: Icons.link_rounded,
-                  onTap: onLink,
-                  tooltip: 'Link device',
-                ),
-              const SizedBox(width: 8),
-              _ActionButton(
-                icon: Icons.send_rounded,
-                onTap: onSend,
-                isPrimary: true,
-                tooltip: 'Send files',
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1065,3 +1274,43 @@ class _ActionButton extends StatelessWidget {
     );
   }
 }
+
+class _WindowButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool isClose;
+  final String? tooltip;
+
+  const _WindowButton({
+    required this.icon,
+    required this.onTap,
+    this.isClose = false,
+    this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip ?? '',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: isClose
+                ? AppTheme.error.withOpacity(0.1)
+                : AppTheme.surfaceDark.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isClose ? AppTheme.error : AppTheme.textMuted,
+          ),
+        ),
+      ),
+    );
+  }
+}
+

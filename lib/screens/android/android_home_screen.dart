@@ -13,6 +13,7 @@ import '../../providers/app_provider.dart';
 import '../../services/file_sender.dart';
 import '../../services/settings_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/animated_background.dart';
 import 'gallery_screen.dart';
 
 class AndroidHomeScreen extends StatefulWidget {
@@ -102,34 +103,36 @@ class _AndroidHomeScreenState extends State<AndroidHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundDark,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                _buildHeader(),
-                Expanded(
-                  child: Consumer<AppProvider>(
-                    builder: (context, provider, _) {
-                      return _buildContent(provider);
-                    },
+      body: AnimatedBackground(
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  _buildHeader(),
+                  Expanded(
+                    child: Consumer<AppProvider>(
+                      builder: (context, provider, _) {
+                        return _buildContent(provider);
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
-            // Received files overlay
-            Consumer<AppProvider>(
-              builder: (context, provider, _) {
-                return _buildReceivedFilesOverlay(provider);
-              },
-            ),
-            // Receiving progress indicator
-            Consumer<AppProvider>(
-              builder: (context, provider, _) {
-                return _buildReceivingIndicator(provider);
-              },
-            ),
-          ],
+                ],
+              ),
+              // Received files overlay
+              Consumer<AppProvider>(
+                builder: (context, provider, _) {
+                  return _buildReceivedFilesOverlay(provider);
+                },
+              ),
+              // Receiving progress indicator
+              Consumer<AppProvider>(
+                builder: (context, provider, _) {
+                  return _buildReceivingIndicator(provider);
+                },
+              ),
+            ],
+          ),
         ),
       ),
       floatingActionButton: _buildFAB(),
@@ -416,171 +419,158 @@ class _AndroidHomeScreenState extends State<AndroidHomeScreen> {
   }
 
   Widget _buildHeader() {
-    final linkedDevice = settingsService.getLinkedDevice();
     final provider = context.read<AppProvider>();
     final currentName = settingsService.getDeviceName() ?? provider.deviceInfo.alias;
 
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primary.withOpacity(0.15),
-            AppTheme.backgroundDark,
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // Centered Logo + Title
+          Column(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(20),
                 child: Image.asset(
                   'assets/logo.png',
-                  width: 48,
-                  height: 48,
+                  width: 72,
+                  height: 72,
                 ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      onTap: () => _showDeviceNameDialog(),
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              currentName,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.textPrimary,
-                                letterSpacing: -0.5,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          const Icon(
-                            Icons.edit_rounded,
-                            size: 14,
-                            color: AppTheme.accent,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (_localIp != null || _wifiName != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Row(
-                          children: [
-                            if (_wifiName != null) ...[
-                              const Icon(
-                                Icons.wifi_rounded,
-                                size: 11,
-                                color: AppTheme.accent,
-                              ),
-                              const SizedBox(width: 3),
-                              Text(
-                                _wifiName!,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.accent,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                            ],
-                            if (_localIp != null)
-                              Text(
-                                '$_localIp:53317',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: AppTheme.textMuted,
-                                  fontFamily: 'monospace',
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                  ],
+              const SizedBox(height: 8),
+              const Text(
+                'SendU',
+                style: TextStyle(
+                  fontFamily: 'Borel',
+                  fontSize: 36,
+                  fontWeight: FontWeight.w400,
+                  color: AppTheme.textPrimary,
+                  height: 1.2,
                 ),
-              ),
-              IconButton(
-                onPressed: () => _showSettings(context),
-                icon: const Icon(Icons.settings_rounded),
-                color: AppTheme.textSecondary,
               ),
             ],
           ),
           const SizedBox(height: 20),
-          // Status card
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceDark,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.border),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: linkedDevice != null
-                        ? AppTheme.success
-                        : AppTheme.textMuted,
-                    shape: BoxShape.circle,
-                    boxShadow: linkedDevice != null
-                        ? [
-                            BoxShadow(
-                              color: AppTheme.success.withOpacity(0.5),
-                              blurRadius: 8,
-                              spreadRadius: 2,
+          // Device info card
+          GestureDetector(
+            onTap: () => _showDeviceNameDialog(),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceDark.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.border),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                currentName,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textPrimary,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ]
-                        : null,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        linkedDevice != null ? 'Linked Device' : 'No Device Linked',
-                        style: const TextStyle(
-                          color: AppTheme.textSecondary,
-                          fontSize: 12,
+                            const SizedBox(width: 8),
+                            const Icon(
+                              Icons.edit_rounded,
+                              size: 14,
+                              color: AppTheme.accent,
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        linkedDevice?.alias ?? 'Tap a device below to link',
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
+                        const SizedBox(height: 6),
+                        if (_wifiName != null || _localIp != null)
+                          Row(
+                            children: [
+                              if (_wifiName != null) ...[
+                                const Icon(
+                                  Icons.wifi_rounded,
+                                  size: 12,
+                                  color: AppTheme.accent,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _wifiName!,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppTheme.accent,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                              ],
+                              if (_localIp != null) ...[
+                                const Icon(
+                                  Icons.lan_rounded,
+                                  size: 12,
+                                  color: AppTheme.textMuted,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$_localIp:53317',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.textMuted,
+                                    fontFamily: 'monospace',
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.fingerprint_rounded,
+                              size: 12,
+                              color: AppTheme.textMuted,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              provider.deviceInfo.fingerprint.substring(0, 8),
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textMuted,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                if (linkedDevice != null)
-                  IconButton(
-                    onPressed: _unlinkDevice,
-                    icon: const Icon(Icons.link_off_rounded, size: 20),
-                    color: AppTheme.error,
-                    tooltip: 'Unlink device',
+                  // Status indicator
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: context.watch<AppProvider>().isRunning
+                          ? AppTheme.success
+                          : AppTheme.textMuted,
+                      boxShadow: context.watch<AppProvider>().isRunning
+                          ? [
+                              BoxShadow(
+                                color: AppTheme.success.withOpacity(0.5),
+                                blurRadius: 8,
+                                spreadRadius: 2,
+                              ),
+                            ]
+                          : null,
+                    ),
                   ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -729,6 +719,7 @@ class _AndroidHomeScreenState extends State<AndroidHomeScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap: () => _linkDevice(device),
+          onLongPress: isLinked ? () => _showDeviceOptionsDialog(device) : null,
           borderRadius: BorderRadius.circular(14),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -803,6 +794,17 @@ class _AndroidHomeScreenState extends State<AndroidHomeScreen> {
                           fontSize: 12,
                         ),
                       ),
+                      if (isLinked) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Hold for options',
+                          style: TextStyle(
+                            color: AppTheme.textMuted.withOpacity(0.6),
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -813,6 +815,220 @@ class _AndroidHomeScreenState extends State<AndroidHomeScreen> {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showDeviceOptionsDialog(DeviceInfo device) {
+    final linkedDevice = settingsService.getLinkedDevice();
+    if (linkedDevice == null) return;
+
+    final subfolderController = TextEditingController(text: linkedDevice.subfolder);
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: 320,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceDark,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppTheme.primary.withOpacity(0.8),
+                          AppTheme.accent.withOpacity(0.6),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      _getDeviceIcon(device.deviceType),
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          device.alias,
+                          style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${device.ip}:${device.port}',
+                          style: const TextStyle(
+                            color: AppTheme.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surfaceLight,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        color: AppTheme.textMuted,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Subfolder path
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(
+                        Icons.folder_rounded,
+                        size: 16,
+                        color: AppTheme.accent,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Save/Receive Folder',
+                        style: TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: subfolderController,
+                    style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'e.g., Desktop, Work PC',
+                      hintStyle: const TextStyle(color: AppTheme.textMuted),
+                      filled: true,
+                      fillColor: AppTheme.backgroundDark,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppTheme.primary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Files will be saved to and sent from this subfolder',
+                    style: TextStyle(
+                      color: AppTheme.textMuted.withOpacity(0.7),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              // Save button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final subfolder = subfolderController.text.trim();
+                    if (subfolder.isNotEmpty) {
+                      await settingsService.setLinkedDeviceSubfolder(subfolder);
+                    }
+                    Navigator.pop(context);
+                    setState(() {});
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Unlink button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _unlinkDevice();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.error,
+                    side: BorderSide(color: AppTheme.error.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.link_off_rounded, size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        'Unlink Device',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1130,96 +1346,4 @@ class _AndroidHomeScreenState extends State<AndroidHomeScreen> {
     );
   }
 
-  void _showSettings(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.surfaceDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppTheme.border,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'Settings',
-              style: TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 20),
-            ListTile(
-              leading: const Icon(Icons.badge_rounded, color: AppTheme.textSecondary),
-              title: const Text('Device Name', style: TextStyle(color: AppTheme.textPrimary)),
-              subtitle: Text(
-                settingsService.getDeviceName() ?? context.read<AppProvider>().deviceInfo.alias,
-                style: const TextStyle(color: AppTheme.textMuted),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                _showDeviceNameDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline_rounded, color: AppTheme.textSecondary),
-              title: const Text('About', style: TextStyle(color: AppTheme.textPrimary)),
-              subtitle: const Text('LetMeSendU v1.0.0', style: TextStyle(color: AppTheme.textMuted)),
-              onTap: () {
-                Navigator.pop(context);
-                _showAboutDialog();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAboutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surfaceDark,
-        title: const Text('LetMeSendU', style: TextStyle(color: AppTheme.textPrimary)),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Version 1.0.0',
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
-            SizedBox(height: 12),
-            Text(
-              'A LocalSend-compatible file sharing app.',
-              style: TextStyle(color: AppTheme.textPrimary),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Author: ShAInyXYZ',
-              style: TextStyle(color: AppTheme.textMuted),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
 }

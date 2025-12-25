@@ -1,13 +1,27 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Brand colors
-  static const Color primary = Color(0xFF6C5CE7);
-  static const Color primaryLight = Color(0xFF8B7CF7);
-  static const Color primaryDark = Color(0xFF5541D9);
+  // Brand colors - Ultramarine theme
+  static const Color primary = Color(0xFF0437F2);
+  static const Color primaryLight = Color(0xFF3B5FF5);
+  static const Color primaryDark = Color(0xFF0328B5);
 
   static const Color accent = Color(0xFF00D9FF);
   static const Color accentAlt = Color(0xFF00F5A0);
+
+  // Animated background gradient colors
+  static const List<Color> gradientColors = [
+    Color(0xFF0D0D12),
+    Color(0xFF0A1628),
+  ];
+
+  // Shape colors for animated background
+  static const List<Color> shapeColors = [
+    Color(0xFF0437F2),  // Ultramarine
+    Color(0xFF3B5FF5),  // Light ultramarine
+    Color(0xFF00D9FF),  // Cyan accent
+    Color(0xFF0328B5),  // Dark ultramarine
+  ];
 
   // Dark theme colors
   static const Color backgroundDark = Color(0xFF0D0D12);

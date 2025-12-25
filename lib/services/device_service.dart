@@ -127,14 +127,72 @@ class DeviceService {
 
   Future<String?> getWifiName() async {
     try {
+      // On Linux, try to get the actual connection name from NetworkManager
+      if (Platform.isLinux) {
+        final connectionName = await _getLinuxConnectionName();
+        if (connectionName != null) {
+          return connectionName;
+        }
+      }
+
       final info = NetworkInfo();
       final wifiName = await info.getWifiName();
+
       // Remove quotes if present
       if (wifiName != null) {
-        return wifiName.replaceAll('"', '');
+        final cleanName = wifiName.replaceAll('"', '');
+        return cleanName;
       }
     } catch (e) {
       print('[DeviceService] Failed to get WiFi name: $e');
+    }
+    return null;
+  }
+
+  Future<String?> _getLinuxConnectionName() async {
+    try {
+      // First, try to get the WiFi SSID if connected via WiFi
+      final wifiResult = await Process.run('iwgetid', ['-r']);
+      if (wifiResult.exitCode == 0) {
+        final ssid = wifiResult.stdout.toString().trim();
+        if (ssid.isNotEmpty) {
+          return ssid;
+        }
+      }
+
+      // If not WiFi, try to get the router/gateway hostname
+      final gatewayResult = await Process.run('ip', ['route', 'show', 'default']);
+      if (gatewayResult.exitCode == 0) {
+        final output = gatewayResult.stdout.toString().trim();
+        // Parse: "default via 192.168.1.1 dev enp3s0 proto dhcp metric 100"
+        final match = RegExp(r'default via (\d+\.\d+\.\d+\.\d+)').firstMatch(output);
+        if (match != null) {
+          final gatewayIp = match.group(1)!;
+
+          // Try to get the router hostname via avahi/mDNS
+          final hostResult = await Process.run('avahi-resolve', ['-a', gatewayIp]);
+          if (hostResult.exitCode == 0) {
+            final hostOutput = hostResult.stdout.toString().trim();
+            if (hostOutput.isNotEmpty) {
+              // Parse: "192.168.1.1    router.local"
+              final parts = hostOutput.split(RegExp(r'\s+'));
+              if (parts.length >= 2) {
+                var hostname = parts[1];
+                // Clean up the hostname
+                hostname = hostname.replaceAll('.local', '');
+                if (hostname.isNotEmpty && hostname != gatewayIp) {
+                  return hostname;
+                }
+              }
+            }
+          }
+
+          // Fallback: show gateway IP as network identifier
+          return 'Network ($gatewayIp)';
+        }
+      }
+    } catch (e) {
+      print('[DeviceService] Failed to get Linux connection name: $e');
     }
     return null;
   }

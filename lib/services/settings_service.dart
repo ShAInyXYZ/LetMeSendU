@@ -6,6 +6,7 @@ class SettingsService {
   static const String _linkedDeviceIpKey = 'linked_device_ip';
   static const String _linkedDevicePortKey = 'linked_device_port';
   static const String _linkedDeviceProtocolKey = 'linked_device_protocol';
+  static const String _linkedDeviceSubfolderKey = 'linked_device_subfolder';
   static const String _deviceNameKey = 'device_name';
 
   late SharedPreferences _prefs;
@@ -29,12 +30,23 @@ class SettingsService {
     required String ip,
     required int port,
     required String protocol,
+    String? subfolder,
   }) async {
     await _prefs.setString(_linkedDeviceFingerprintKey, fingerprint);
     await _prefs.setString(_linkedDeviceAliasKey, alias);
     await _prefs.setString(_linkedDeviceIpKey, ip);
     await _prefs.setInt(_linkedDevicePortKey, port);
     await _prefs.setString(_linkedDeviceProtocolKey, protocol);
+    if (subfolder != null) {
+      await _prefs.setString(_linkedDeviceSubfolderKey, subfolder);
+    } else {
+      // Default subfolder to device alias
+      await _prefs.setString(_linkedDeviceSubfolderKey, alias);
+    }
+  }
+
+  Future<void> setLinkedDeviceSubfolder(String subfolder) async {
+    await _prefs.setString(_linkedDeviceSubfolderKey, subfolder);
   }
 
   LinkedDevice? getLinkedDevice() {
@@ -43,6 +55,7 @@ class SettingsService {
     final ip = _prefs.getString(_linkedDeviceIpKey);
     final port = _prefs.getInt(_linkedDevicePortKey);
     final protocol = _prefs.getString(_linkedDeviceProtocolKey);
+    final subfolder = _prefs.getString(_linkedDeviceSubfolderKey);
 
     if (fingerprint == null || alias == null || ip == null || port == null || protocol == null) {
       return null;
@@ -54,6 +67,7 @@ class SettingsService {
       ip: ip,
       port: port,
       protocol: protocol,
+      subfolder: subfolder ?? alias,
     );
   }
 
@@ -63,6 +77,7 @@ class SettingsService {
     await _prefs.remove(_linkedDeviceIpKey);
     await _prefs.remove(_linkedDevicePortKey);
     await _prefs.remove(_linkedDeviceProtocolKey);
+    await _prefs.remove(_linkedDeviceSubfolderKey);
   }
 }
 
@@ -72,6 +87,7 @@ class LinkedDevice {
   final String ip;
   final int port;
   final String protocol;
+  final String subfolder;
 
   LinkedDevice({
     required this.fingerprint,
@@ -79,5 +95,6 @@ class LinkedDevice {
     required this.ip,
     required this.port,
     required this.protocol,
+    required this.subfolder,
   });
 }
