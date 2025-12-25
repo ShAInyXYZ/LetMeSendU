@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
 
-import '../../main_android.dart';
+import '../../main.dart';
 import '../../models/device_info.dart';
 import '../../models/transfer_session.dart';
 import '../../providers/app_provider.dart';
@@ -437,27 +437,12 @@ class _AndroidHomeScreenState extends State<AndroidHomeScreen> {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppTheme.primary, AppTheme.accent],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppTheme.primary.withOpacity(0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.send_rounded,
-                  color: Colors.white,
-                  size: 24,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Image.asset(
+                  'assets/logo.png',
+                  width: 48,
+                  height: 48,
                 ),
               ),
               const SizedBox(width: 14),

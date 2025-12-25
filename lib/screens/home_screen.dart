@@ -48,20 +48,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 children: [
                   // Logo
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppTheme.primary, AppTheme.accent],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.send_rounded,
-                      color: Colors.white,
-                      size: 20,
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.asset(
+                      'assets/logo.png',
+                      width: 40,
+                      height: 40,
                     ),
                   ),
                   const SizedBox(width: 12),

@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'providers/app_provider.dart';
 import 'screens/home_screen.dart';
+import 'screens/android/android_home_screen.dart';
 import 'screens/quick_send_window.dart';
 import 'services/device_service.dart';
 import 'services/settings_service.dart';
@@ -28,15 +30,55 @@ void main(List<String> args) async {
   final savedDeviceName = settingsService.getDeviceName();
   deviceService = DeviceService(customAlias: savedDeviceName);
 
-  // Check if launching as quick send window
-  final isQuickSendWindow = args.contains('--quick-send');
-
-  await windowManager.ensureInitialized();
-
-  if (isQuickSendWindow) {
-    await _launchQuickSendWindow();
+  // Platform-specific initialization
+  if (Platform.isAndroid || Platform.isIOS) {
+    await _launchMobileApp();
   } else {
-    await _launchMainWindow();
+    // Desktop platforms (Linux, Windows, macOS)
+    final isQuickSendWindow = args.contains('--quick-send');
+    await windowManager.ensureInitialized();
+
+    if (isQuickSendWindow) {
+      await _launchQuickSendWindow();
+    } else {
+      await _launchMainWindow();
+    }
+  }
+}
+
+Future<void> _launchMobileApp() async {
+  // Request storage permissions (Android only)
+  if (Platform.isAndroid) {
+    final storageStatus = await Permission.storage.status;
+    if (!storageStatus.isGranted) {
+      await Permission.storage.request();
+    }
+    final manageStatus = await Permission.manageExternalStorage.status;
+    if (!manageStatus.isGranted) {
+      await Permission.manageExternalStorage.request();
+    }
+  }
+
+  runApp(const LetMeSendUMobileApp());
+}
+
+class LetMeSendUMobileApp extends StatelessWidget {
+  const LetMeSendUMobileApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final savedName = settingsService.getDeviceName();
+    return ChangeNotifierProvider(
+      create: (_) => AppProvider(deviceName: savedName),
+      child: MaterialApp(
+        title: 'LetMeSendU',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.darkTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.dark,
+        home: const AndroidHomeScreen(),
+      ),
+    );
   }
 }
 
@@ -51,6 +93,7 @@ Future<void> _launchMainWindow() async {
   );
 
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.setIcon('assets/logo.png');
     await windowManager.show();
     await windowManager.focus();
   });
